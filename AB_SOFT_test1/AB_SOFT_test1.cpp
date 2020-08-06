@@ -4,11 +4,11 @@
 #include <iostream>
 #include <Windows.h>
 
-#define TRIAL_RUNS 2
-#define READERS_AMOUNT 5
+#define TRIAL_RUNS 3
+#define READERS_AMOUNT 7
 #define WRITERS_AMOUNT 5
-#define SLEEP_TIME_READ_MS 1000
-#define SLEEP_TIME_WRITE_MS 1000
+#define SLEEP_TIME_READ_MS 25
+#define SLEEP_TIME_WRITE_MS 50
 
 using namespace std;
 
@@ -20,60 +20,71 @@ int ActiveReaders = 0;
 int WaitingReaders = 0;
 //количество активных и ожидающих читателей/писателей
 
-int WriteActionCount = 0; //счетчик действий на запись (для изменения массива)
+//int WriteActionCount = 0; //счетчик действий на запись (для изменения массива)
 
-int *Data = new int[DATA_SIZE]; //массив в качестве примера разделяемых данных
+//int *Data = new int[DATA_SIZE]; //массив в качестве примера разделяемых данных
 
 HANDLE hWriteEvent, hReadEvent;
-HANDLE hMutexCountR,hMutexCountW,hMutexR,hMutexW;
+HANDLE hMutexCount,hMutexR,hMutexW;
 
 void StartWrite()
 {
-	WaitForSingleObject(hMutexCountW, INFINITE);
+	WaitForSingleObject(hMutexCount, INFINITE);
 	bool isBusy = ActiveWriters > 0 || ActiveReaders >0;
 	if (isBusy)
 	{
 		WaitingWriters++;
 	}
-	ReleaseMutex(hMutexCountW);
+	else
+	{
+		ActiveWriters++;
+	}
+	ReleaseMutex(hMutexCount);
 
-	WaitForSingleObject(hWriteEvent, INFINITE);
-	if(isBusy)
-		WaitingWriters--;
-	ActiveWriters++;
-
+	if (isBusy)
+	{
+		WaitForSingleObject(hWriteEvent, INFINITE);
+	}
 }
 
 void StartRead()
 {
-	WaitForSingleObject(hMutexCountR, INFINITE);
+	WaitForSingleObject(hMutexCount, INFINITE);
 	bool isBusy = ActiveWriters > 0 || WaitingWriters > 0;
 	if (isBusy)
 	{
 		WaitingReaders++;
+		ResetEvent(hReadEvent);
 	}
-	ReleaseMutex(hMutexCountR);
-
-	WaitForSingleObject(hReadEvent, INFINITE);
+	else
+	{
+		ActiveReaders++;
+	}
+	ReleaseMutex(hMutexCount);
 	if (isBusy)
-		WaitingReaders--;
-	ActiveReaders++;
+	{
+		WaitForSingleObject(hReadEvent, INFINITE);
+	}
 }
 
 void StopWrite()
 {
-	WaitForSingleObject(hMutexCountW, INFINITE);
+	WaitForSingleObject(hMutexCount, INFINITE);
 	ActiveWriters--;
 	HANDLE hEv = NULL;
 	if (WaitingWriters > 0)
 	{
+		WaitingWriters--;
+		ActiveWriters++;
 		hEv = hWriteEvent;
 	}
 	else if (WaitingReaders > 0)
 	{
+		ActiveReaders = WaitingReaders;
+		WaitingReaders = 0;
 		hEv = hReadEvent;
 	}
-	ReleaseMutex(hMutexCountW);
+	ReleaseMutex(hMutexCount);
 
 	if (hEv)
 		SetEvent(hEv);
@@ -81,22 +92,33 @@ void StopWrite()
 
 void StopRead()
 {
-	WaitForSingleObject(hMutexCountR, INFINITE);
+	WaitForSingleObject(hMutexCount, INFINITE);
 	ActiveReaders--;
+	HANDLE hEv = NULL;
+
+	if (ActiveReaders == 0 && WaitingWriters > 0)
+	{
+		WaitingWriters--;
+		ActiveWriters++;
+		hEv = hWriteEvent;
+	}
+	else {
+		ActiveReaders = WaitingReaders;
+		WaitingReaders = 0;
+		hEv = hReadEvent;
+	}
+	ReleaseMutex(hMutexCount);
+
+	if (hEv)
+		SetEvent(hEv);
 }
 
 DWORD WINAPI Reader(LPVOID lpParam)
 {
 	StartRead();
-
-	for (int i = 0; i < DATA_SIZE; i++)
-	{
-		cout << Data[i] << " ";
-	}
-
-	cout << endl;
-
 	Sleep(SLEEP_TIME_READ_MS);
+
+	cout << "data was read" << endl;
 
 	StopRead();
 	return 0;
@@ -106,10 +128,10 @@ DWORD WINAPI Writer(LPVOID lpParam)
 {
 	StartWrite();
 
-	Data[WriteActionCount%DATA_SIZE]++; //инкрементируем элемент с индексом равным текущая_операция_записи % размер_массива;
-	WriteActionCount++;
-	cout << "data was modified " << endl;
+	//Data[WriteActionCount%DATA_SIZE]++; //инкрементируем элемент с индексом равным текущая_операция_записи % размер_массива;
+	//WriteActionCount++;
 	Sleep(SLEEP_TIME_WRITE_MS);
+	cout << "data was modified " << endl;
 
 	StopWrite();
 	return 0;
@@ -117,27 +139,41 @@ DWORD WINAPI Writer(LPVOID lpParam)
 
 int main()
 {
+	
 	for (int i = 0; i < TRIAL_RUNS; i++)
 	{
-		cout << "Trial run №" << i + 1<<endl;
-		for (int i = 0; i < DATA_SIZE; i++)
-		{
-			Data[i] = 0;
-		}
+		cout << "Trial run #" << i + 1<<endl;
+		//for (int i = 0; i < DATA_SIZE; i++)
+	//	{
+			//Data[i] = 0;
+		//}
 
 		HANDLE Readers[READERS_AMOUNT], Writers[WRITERS_AMOUNT];
 
-		hWriteEvent = CreateEventA(NULL, TRUE, FALSE, "E_WRITE");
+		hWriteEvent = CreateEventA(NULL, FALSE, FALSE, "E_WRITE");
 		hReadEvent = CreateEventA(NULL, FALSE, FALSE, "E_READ");
 
-		hMutexCountR = CreateMutexA(NULL, NULL, "MUTEX_COUNT_R");
-		hMutexCountW = CreateMutexA(NULL, NULL, "MUTEX_COUNT_W");
-		hMutexR = CreateMutexA(NULL, NULL, "MUTEX_R");
-		hMutexW = CreateMutexA(NULL, NULL, "MUTEX_W");
-
-		if (hMutexCountR == NULL || hMutexCountW ==NULL || hMutexR == NULL || hMutexW == NULL)
+		if (hWriteEvent == NULL || hReadEvent == NULL)
 		{
-			cout << "Mutex threads creation error" << GetLastError();
+			cout << "Event cration error: " << GetLastError();
+		}
+
+		hMutexCount = CreateMutexA(NULL, NULL, "MUTEX_COUNT");
+
+		if (hMutexCount == NULL)
+		{
+			cout << "Mutex creation error: " << GetLastError();
+			return 1;
+		}
+
+		for (int i = 0; i < WRITERS_AMOUNT; i++)
+		{
+			Writers[i] = CreateThread(NULL, NULL, Writer, NULL, NULL, NULL);
+		}
+
+		if (Writers == NULL)
+		{
+			cout << "Writers creation error: " << GetLastError();
 			return 1;
 		}
 
@@ -152,17 +188,6 @@ int main()
 			return 1;
 		}
 
-		for (int i = 0; i < WRITERS_AMOUNT; i++)
-		{
-			Writers[i] = CreateThread(NULL, NULL, Writer, NULL, NULL, NULL);
-		}
-
-		if (Writers == NULL)
-		{
-			cout << "Writers creation error" << GetLastError();
-			return 1;
-		}
-
 		WaitForMultipleObjects(READERS_AMOUNT, Readers, TRUE, INFINITE);
 		for (int i = 0; i < READERS_AMOUNT; i++)
 		{
@@ -174,11 +199,11 @@ int main()
 		{
 			CloseHandle(Writers[i]);
 		}
-	}
 
-	CloseHandle(hWriteEvent);
-	CloseHandle(hReadEvent);
-	CloseHandle(hMutex);
+		CloseHandle(hWriteEvent);
+		CloseHandle(hReadEvent);
+		CloseHandle(hMutexCount);
+	}
 
 	return 0;
 }
