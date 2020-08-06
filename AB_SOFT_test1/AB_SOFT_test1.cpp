@@ -7,12 +7,10 @@
 #define TRIAL_RUNS 3
 #define READERS_AMOUNT 7
 #define WRITERS_AMOUNT 5
-#define SLEEP_TIME_READ_MS 25
-#define SLEEP_TIME_WRITE_MS 50
+#define SLEEP_TIME_READ_MS 250
+#define SLEEP_TIME_WRITE_MS 500
 
 using namespace std;
-
-const int DATA_SIZE = 25;
 
 int ActiveWriters = 0;
 int WaitingWriters = 0;
@@ -20,12 +18,8 @@ int ActiveReaders = 0;
 int WaitingReaders = 0;
 //количество активных и ожидающих читателей/писателей
 
-//int WriteActionCount = 0; //счетчик действий на запись (для изменения массива)
-
-//int *Data = new int[DATA_SIZE]; //массив в качестве примера разделяемых данных
-
-HANDLE hWriteEvent, hReadEvent;
-HANDLE hMutexCount,hMutexR,hMutexW;
+HANDLE hWriteEvent, hReadEvent; //разрешения на чтения и запись
+HANDLE hMutexCount; 
 
 void StartWrite()
 {
@@ -110,7 +104,7 @@ void StopRead()
 	ReleaseMutex(hMutexCount);
 
 	if (hEv)
-		SetEvent(hEv);
+		SetEvent(hEv); //разрешение чтения или записи в зависимости от ожидающих читателей/писателей
 }
 
 DWORD WINAPI Reader(LPVOID lpParam)
@@ -128,8 +122,6 @@ DWORD WINAPI Writer(LPVOID lpParam)
 {
 	StartWrite();
 
-	//Data[WriteActionCount%DATA_SIZE]++; //инкрементируем элемент с индексом равным текущая_операция_записи % размер_массива;
-	//WriteActionCount++;
 	Sleep(SLEEP_TIME_WRITE_MS);
 	cout << "data was modified " << endl;
 
@@ -143,10 +135,6 @@ int main()
 	for (int i = 0; i < TRIAL_RUNS; i++)
 	{
 		cout << "Trial run #" << i + 1<<endl;
-		//for (int i = 0; i < DATA_SIZE; i++)
-	//	{
-			//Data[i] = 0;
-		//}
 
 		HANDLE Readers[READERS_AMOUNT], Writers[WRITERS_AMOUNT];
 
