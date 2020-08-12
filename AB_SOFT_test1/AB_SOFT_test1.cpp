@@ -18,6 +18,10 @@ int ActiveReaders = 0;
 int WaitingReaders = 0;
 //количество активных и ожидающих читателей/писателей
 
+const int BUFF_SIZE = 20;
+
+int arr[BUFF_SIZE];
+
 HANDLE hWriteEvent, hReadEvent; //разрешения на чтения и запись
 HANDLE hMutexCount; 
 
@@ -112,7 +116,12 @@ DWORD WINAPI Reader(LPVOID lpParam)
 	StartRead();
 	Sleep(SLEEP_TIME_READ_MS);
 
-	cout << "data was read" << endl;
+	for (int i = 0; i < BUFF_SIZE; i++)
+	{
+		cout << arr[i] << " ";
+	}
+
+	cout << endl << "data was read" << endl << endl;
 
 	StopRead();
 	return 0;
@@ -123,7 +132,14 @@ DWORD WINAPI Writer(LPVOID lpParam)
 	StartWrite();
 
 	Sleep(SLEEP_TIME_WRITE_MS);
-	cout << "data was modified " << endl;
+
+	for (int i = 0; i < BUFF_SIZE; i++)
+	{
+		arr[i]++;
+		cout << arr[i] << " ";
+	}
+
+	cout << endl << "data was modified " << endl << endl;
 
 	StopWrite();
 	return 0;
@@ -131,6 +147,10 @@ DWORD WINAPI Writer(LPVOID lpParam)
 
 int main()
 {
+	for (int i = 0; i < BUFF_SIZE; i++)
+	{
+		arr[i] = 0;
+	}
 	
 	for (int i = 0; i < TRIAL_RUNS; i++)
 	{
